@@ -8,5 +8,9 @@
 
 services:
   odoo:
-    # Expose Odoo in debug mode for local development
-    command: ["odoo", "--dev=reload,qweb,xml"]
+    # Render config from template, then start Odoo in dev mode
+    command: >
+      sh -c "
+        envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
+        exec odoo -c /tmp/odoo.conf --dev=reload,qweb,xml
+      "

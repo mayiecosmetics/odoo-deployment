@@ -1,6 +1,9 @@
 # Environment variables (contains secrets)
 .env
 
+# Generated runtime config (rendered from template at startup)
+config/odoo.conf
+
 # Docker volumes (data is local, not versioned)
 volumes/
 

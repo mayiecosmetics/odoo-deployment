@@ -18,22 +18,30 @@ services:
   # ---------------------------------------------------------------------------
   # Odoo — ERP application
   # ---------------------------------------------------------------------------
+  # Config is generated at startup from config/odoo.conf.template via envsubst.
+  # Secrets are injected from .env — never committed to Git.
+  # ---------------------------------------------------------------------------
   odoo:
-    image: ${ODOO_IMAGE:-odoo:19.0}
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: mayie-odoo-app
     restart: unless-stopped
     depends_on:
       - db
     ports:
       - "${ODOO_PORT:-8069}:8069"
-      - "${ODOO_LONGPOLLING_PORT:-8072}:8072"
     environment:
-      HOST: db
-      PORT: 5432
-      USER: ${POSTGRES_USER:-odoo}
-      PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      ODOO_ADMIN_PASSWORD: ${ODOO_ADMIN_PASSWORD:?Set ODOO_ADMIN_PASSWORD in .env}
+    command: >
+      sh -c "
+        envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
+        exec odoo -c /tmp/odoo.conf
+      "
     volumes:
-      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./config/odoo.conf.template:/etc/odoo/odoo.conf.template:ro
       - ./volumes/odoo:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
