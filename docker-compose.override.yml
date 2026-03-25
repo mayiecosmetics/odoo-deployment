@@ -6,8 +6,6 @@
 # NOT be deployed to production.
 # =============================================================================
 
-version: "3.8"
-
 services:
   odoo:
     # Expose Odoo in debug mode for local development

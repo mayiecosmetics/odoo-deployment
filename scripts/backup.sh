@@ -4,7 +4,7 @@
 # =============================================================================
 # Creates a compressed backup of:
 #   1. PostgreSQL database (pg_dump)
-#   2. Odoo filestore
+#   2. Odoo data directory (/var/lib/odoo — filestore, sessions, etc.)
 #
 # Usage:
 #   ./scripts/backup.sh
@@ -22,8 +22,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PROJECT_DIR/.env" 2>/dev/null || true
 
 DB_NAME="${1:-${POSTGRES_DB:-postgres}}"
-DB_CONTAINER="mayie-odoo-db"
-BACKUP_DIR="${BACKUP_DIR:-$PROJECT_DIR/backups}"
+DB_USER="${POSTGRES_USER:-odoo}"
+DB_CONTAINER=$(docker compose -f "$PROJECT_DIR/docker-compose.yml" ps -q db 2>/dev/null || echo "mayie-odoo-db")
+BACKUP_DIR="$PROJECT_DIR/backups"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_NAME="backup_${DB_NAME}_${TIMESTAMP}"
@@ -37,13 +38,18 @@ echo "Target:   $BACKUP_DIR/$BACKUP_NAME.tar.gz"
 
 # --- Dump database ---
 echo "[1/3] Dumping PostgreSQL database..."
-docker exec "$DB_CONTAINER" pg_dump -U "${POSTGRES_USER:-odoo}" "$DB_NAME" \
+docker exec "$DB_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" \
     > "$BACKUP_DIR/${BACKUP_NAME}.sql"
 
-# --- Copy filestore ---
-echo "[2/3] Backing up filestore..."
+# --- Copy Odoo data directory ---
+echo "[2/3] Backing up Odoo data directory..."
 TEMP_DIR=$(mktemp -d)
-cp -r "$PROJECT_DIR/volumes/filestore" "$TEMP_DIR/filestore" 2>/dev/null || echo "No filestore found, skipping."
+if [ -d "$PROJECT_DIR/volumes/odoo" ]; then
+    cp -r "$PROJECT_DIR/volumes/odoo" "$TEMP_DIR/odoo-data"
+else
+    echo "Warning: No volumes/odoo directory found, skipping data backup."
+    mkdir -p "$TEMP_DIR/odoo-data"
+fi
 cp "$BACKUP_DIR/${BACKUP_NAME}.sql" "$TEMP_DIR/"
 
 # --- Compress ---

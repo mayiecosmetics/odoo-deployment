@@ -9,7 +9,7 @@ This repository contains everything needed to deploy and manage the Odoo instanc
 - Docker Compose configuration
 - Odoo server configuration
 - Backup and restore scripts
-- Nginx reverse proxy configuration
+- Nginx reverse proxy configuration (reference)
 - Environment variables
 
 ## Repository Structure
@@ -22,16 +22,16 @@ odoo-deployment/
 ├── config/
 │   └── odoo.conf               # Odoo server configuration
 ├── nginx/
-│   └── odoo.conf               # Nginx reverse proxy config
+│   └── odoo.conf               # Nginx reverse proxy config (reference)
 ├── scripts/
-│   ├── backup.sh               # Database + filestore backup
+│   ├── backup.sh               # Database + data directory backup
 │   └── restore.sh              # Restore from backup
 ├── volumes/                    # Docker volumes (git-ignored)
 │   ├── postgres/               # PostgreSQL data
-│   └── filestore/              # Odoo filestore
-└── addons/                     # Symlink targets for addon repos
-    ├── custom/                 # -> odoo-custom-addons
-    └── third_party/            # -> odoo-third-party-addons
+│   └── odoo/                   # Odoo data (filestore, sessions)
+└── addons/                     # Addon mount points
+    ├── custom/                 # -> odoo-custom-addons content
+    └── third_party/            # -> odoo-third-party-addons content
 ```
 
 ## Prerequisites
@@ -57,7 +57,7 @@ git clone git@github.com:mayiecosmetics/odoo-third-party-addons.git
 ```bash
 cd odoo-deployment
 cp .env.example .env
-# Edit .env with your values
+# Edit .env — set real passwords for POSTGRES_PASSWORD and ODOO_ADMIN_PASSWORD
 ```
 
 ### 3. Start the stack
@@ -71,9 +71,24 @@ docker compose up -d
 - **Web interface:** http://localhost:8069
 - **Database manager:** http://localhost:8069/web/database/manager
 
+## Environment Variables
+
+All configuration is controlled via `.env`. One credential set for both PostgreSQL and Odoo:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `POSTGRES_DB` | Database name | `postgres` |
+| `POSTGRES_USER` | Database user (shared by Postgres and Odoo) | `odoo` |
+| `POSTGRES_PASSWORD` | Database password (shared by Postgres and Odoo) | — |
+| `ODOO_IMAGE` | Odoo Docker image | `odoo:19.0` |
+| `ODOO_PORT` | Host port for Odoo web | `8069` |
+| `ODOO_LONGPOLLING_PORT` | Host port for longpolling | `8072` |
+| `ODOO_ADMIN_PASSWORD` | Odoo master/admin password | — |
+| `BACKUP_RETENTION_DAYS` | Auto-delete backups older than N days | `30` |
+
 ## How the Repositories Connect
 
-The deployment repo references the addon repos via Docker volume mounts:
+The deployment repo mounts addon directories into the Odoo container:
 
 ```yaml
 services:
@@ -100,13 +115,26 @@ addons_path =
 ./scripts/backup.sh
 ```
 
-Backups are stored in `./backups/` with timestamps: `backup_YYYYMMDD_HHMMSS.tar.gz`
+Backups include the PostgreSQL database dump and the full Odoo data directory (filestore, sessions). Stored in `./backups/` with timestamps.
 
 ### Restore from backup
 
 ```bash
-./scripts/restore.sh ./backups/backup_20260325_120000.tar.gz
+./scripts/restore.sh ./backups/backup_postgres_20260325_120000.tar.gz
 ```
+
+## Migration to Production (Ubuntu)
+
+This configuration runs identically on macOS and Ubuntu. To migrate:
+
+1. Copy this repo to the server
+2. Copy `volumes/` directory (postgres data + odoo data)
+3. Create `.env` with production passwords
+4. Adjust `odoo.conf` for production: `workers = 4`, `proxy_mode = True`, `list_db = False`
+5. Remove or don't copy `docker-compose.override.yml` (disables dev mode)
+6. `docker compose up -d`
+
+No structural changes required.
 
 ## Branch Strategy
 
@@ -116,26 +144,6 @@ Backups are stored in `./backups/` with timestamps: `backup_YYYYMMDD_HHMMSS.tar.
 | `dev`       | Staging/testing  |
 | `feature/*` | New features     |
 | `hotfix/*`  | Urgent fixes     |
-
-### Workflow
-
-1. Create a feature branch from `dev`
-2. Develop and test locally
-3. Merge to `dev` for staging
-4. Test on staging
-5. Merge to `main` for production
-6. Tag the release (e.g., `v1.0.0`)
-
-## Version Tagging
-
-Always tag releases on `main`:
-
-```bash
-git tag -a v1.0.0 -m "Initial production deployment"
-git push origin v1.0.0
-```
-
-Tags enable rollback, audit trail, and stable deployments.
 
 ## Related Repositories
 
