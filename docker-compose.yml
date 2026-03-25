@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Odoo database backend
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:15
+    container_name: mayie-odoo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - odoo-network
+
+  # ---------------------------------------------------------------------------
+  # Odoo — ERP application
+  # ---------------------------------------------------------------------------
+  odoo:
+    image: ${ODOO_IMAGE:-odoo:17.0}
+    container_name: mayie-odoo-app
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "${ODOO_PORT:-8069}:8069"
+      - "${ODOO_LONGPOLLING_PORT:-8072}:8072"
+    environment:
+      HOST: db
+      PORT: 5432
+      USER: ${DB_USER:-odoo}
+      PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - ./volumes/filestore:/var/lib/odoo/filestore
+      - ./addons/custom:/mnt/extra-addons/custom
+      - ./addons/third_party:/mnt/extra-addons/third_party
+    networks:
+      - odoo-network
+
+networks:
+  odoo-network:
+    driver: bridge

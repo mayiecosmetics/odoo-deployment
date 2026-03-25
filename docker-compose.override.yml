@@ -1,0 +1,14 @@
+# =============================================================================
+# Local development overrides
+# =============================================================================
+# This file is automatically picked up by Docker Compose alongside
+# docker-compose.yml. Use it for local development settings that should
+# NOT be deployed to production.
+# =============================================================================
+
+version: "3.8"
+
+services:
+  odoo:
+    # Expose Odoo in debug mode for local development
+    command: ["odoo", "--dev=reload,qweb,xml"]

@@ -1,0 +1,19 @@
+# Environment variables (contains secrets)
+.env
+
+# Docker volumes (data is local, not versioned)
+volumes/postgres/
+volumes/filestore/
+
+# Backups (too large for git)
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
