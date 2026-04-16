@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Social Conversation: List View                                -->
+    <!-- ============================================================ -->
+    <record id="social_conversation_view_list" model="ir.ui.view">
+        <field name="name">social.conversation.list</field>
+        <field name="model">social.conversation</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="platform" widget="badge"/>
+                <field name="sender_name"/>
+                <field name="partner_id"/>
+                <field name="last_message_preview"/>
+                <field name="last_message_date"/>
+                <field name="message_count" string="Messages"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'active'"
+                       decoration-muted="state == 'archived'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Social Conversation: Form View                                -->
+    <!-- ============================================================ -->
+    <record id="social_conversation_view_form" model="ir.ui.view">
+        <field name="name">social.conversation.form</field>
+        <field name="model">social.conversation</field>
+        <field name="arch" type="xml">
+            <form string="Conversation">
+                <header>
+                    <button name="action_send_message"
+                            type="object" string="Reply"
+                            class="oe_highlight"
+                            icon="fa-reply"/>
+                    <button name="action_create_partner"
+                            type="object" string="Create Contact"
+                            invisible="partner_id"
+                            icon="fa-user-plus"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_messages"
+                                type="object" class="oe_stat_button"
+                                icon="fa-envelope">
+                            <field name="message_count"
+                                   widget="statinfo"
+                                   string="Messages"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group string="Sender Info">
+                            <field name="sender_name"/>
+                            <field name="sender_id"/>
+                            <field name="sender_profile_pic" widget="url"/>
+                            <field name="platform"/>
+                        </group>
+                        <group string="Odoo Link">
+                            <field name="partner_id"/>
+                            <field name="account_id"/>
+                            <field name="last_message_date"/>
+                        </group>
+                    </group>
+
+                    <!-- Message history -->
+                    <notebook>
+                        <page string="Messages" name="messages">
+                            <field name="message_ids" nolabel="1">
+                                <list default_order="message_date asc"
+                                      decoration-info="direction == 'incoming'"
+                                      decoration-success="direction == 'outgoing'">
+                                    <field name="message_date"/>
+                                    <field name="direction" widget="badge"/>
+                                    <field name="body"/>
+                                    <field name="attachment_url" widget="url"
+                                           string="Attachment"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Social Conversation: Search View                              -->
+    <!-- ============================================================ -->
+    <record id="social_conversation_view_search" model="ir.ui.view">
+        <field name="name">social.conversation.search</field>
+        <field name="model">social.conversation</field>
+        <field name="arch" type="xml">
+            <search string="Search Conversations">
+                <field name="sender_name"/>
+                <field name="partner_id"/>
+                <field name="account_id"/>
+                <filter string="Facebook" name="facebook"
+                        domain="[('platform', '=', 'facebook')]"/>
+                <filter string="Instagram" name="instagram"
+                        domain="[('platform', '=', 'instagram')]"/>
+                <separator/>
+                <filter string="Active" name="active"
+                        domain="[('state', '=', 'active')]"/>
+                <filter string="Archived" name="archived"
+                        domain="[('state', '=', 'archived')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Platform" name="group_platform"
+                            context="{'group_by': 'platform'}"/>
+                    <filter string="Account" name="group_account"
+                            context="{'group_by': 'account_id'}"/>
+                    <filter string="Contact" name="group_partner"
+                            context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Social Conversation: Action                                   -->
+    <!-- ============================================================ -->
+    <record id="action_social_conversation" model="ir.actions.act_window">
+        <field name="name">Conversations</field>
+        <field name="res_model">social.conversation</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="social_conversation_view_search"/>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No conversations yet
+            </p>
+            <p>
+                Conversations will appear here automatically when someone
+                sends a message to your Facebook Page or Instagram account.
+            </p>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Social Message: List View (standalone)                        -->
+    <!-- ============================================================ -->
+    <record id="social_message_view_list" model="ir.ui.view">
+        <field name="name">social.message.list</field>
+        <field name="model">social.message</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="message_date"/>
+                <field name="conversation_id"/>
+                <field name="platform" widget="badge"/>
+                <field name="direction" widget="badge"/>
+                <field name="body"/>
+                <field name="attachment_url" widget="url" string="Attachment"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_social_message" model="ir.actions.act_window">
+        <field name="name">All Messages</field>
+        <field name="res_model">social.message</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Reply Wizard: Form View                                       -->
+    <!-- ============================================================ -->
+    <record id="social_message_reply_wizard_form" model="ir.ui.view">
+        <field name="name">social.message.reply.wizard.form</field>
+        <field name="model">social.message.reply.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Reply">
+                <group>
+                    <field name="conversation_id" readonly="1"/>
+                    <field name="body" placeholder="Type your reply here..."
+                           widget="text"/>
+                </group>
+                <footer>
+                    <button name="action_send" type="object"
+                            string="Send" class="oe_highlight"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,135 @@
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12" style="text-align: center;">
+            <h2 style="color: #875A7B; font-size: 32px; font-weight: bold;">
+                Social Messenger Integration
+            </h2>
+            <h3 style="color: #555; font-size: 18px;">
+                Facebook Messenger &amp; Instagram DM — Bidirectional Messaging in Odoo Discuss
+            </h3>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <p style="font-size: 16px; color: #333; text-align: center; margin: 20px 0;">
+                Receive and reply to Facebook Messenger and Instagram Direct Messages
+                directly from Odoo. All conversations appear in the Chatter and are
+                linked to your Odoo contacts. No external middleware needed.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark" style="padding: 30px 0;">
+    <div class="oe_row oe_spaced">
+        <h3 style="text-align: center; color: #875A7B;">Key Features</h3>
+    </div>
+    <div class="oe_row oe_spaced">
+        <div class="oe_span4">
+            <div style="text-align: center; padding: 15px;">
+                <span style="font-size: 40px; color: #875A7B;">&#x1F4E9;</span>
+                <h4>Real-Time Incoming Messages</h4>
+                <p>Messages from Facebook Messenger and Instagram DMs are delivered
+                   instantly to Odoo via Meta Webhooks. No polling, no delays.</p>
+            </div>
+        </div>
+        <div class="oe_span4">
+            <div style="text-align: center; padding: 15px;">
+                <span style="font-size: 40px; color: #875A7B;">&#x1F4AC;</span>
+                <h4>Reply from Odoo</h4>
+                <p>Respond to customers directly from the conversation form.
+                   Messages are sent via Meta Send API and logged in Chatter.</p>
+            </div>
+        </div>
+        <div class="oe_span4">
+            <div style="text-align: center; padding: 15px;">
+                <span style="font-size: 40px; color: #875A7B;">&#x1F465;</span>
+                <h4>Auto-Link Contacts</h4>
+                <p>Conversations are automatically linked to existing contacts.
+                   Create new contacts from social profiles with one click.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container" style="padding: 30px 0;">
+    <div class="oe_row oe_spaced">
+        <h3 style="text-align: center; color: #875A7B;">Complete Feature List</h3>
+    </div>
+    <div class="oe_row oe_spaced">
+        <div class="oe_span6">
+            <ul style="font-size: 14px; line-height: 2;">
+                <li><strong>Facebook Messenger</strong> — full send &amp; receive</li>
+                <li><strong>Instagram DMs</strong> — full send &amp; receive</li>
+                <li><strong>Odoo Chatter integration</strong> — every message logged</li>
+                <li><strong>Contact auto-creation</strong> from sender profiles</li>
+                <li><strong>Text + image attachments</strong> supported</li>
+            </ul>
+        </div>
+        <div class="oe_span6">
+            <ul style="font-size: 14px; line-height: 2;">
+                <li><strong>Multi-account</strong> — connect multiple pages/accounts</li>
+                <li><strong>Webhook signature verification</strong> for security</li>
+                <li><strong>User &amp; Manager security groups</strong></li>
+                <li><strong>Conversation search &amp; filters</strong> by platform, contact</li>
+                <li><strong>No external dependencies</strong> — uses Odoo's built-in libraries</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark" style="padding: 30px 0;">
+    <div class="oe_row oe_spaced">
+        <h3 style="text-align: center; color: #875A7B;">Quick Setup (5 Minutes)</h3>
+    </div>
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12">
+            <ol style="font-size: 14px; line-height: 2.2;">
+                <li>Create a free Meta App at
+                    <strong>developers.facebook.com</strong></li>
+                <li>Add the <strong>Messenger</strong> and/or <strong>Instagram</strong>
+                    products to your Meta App</li>
+                <li>Generate a <strong>Page Access Token</strong> with
+                    <code>pages_messaging</code> permission</li>
+                <li>In Odoo, go to <strong>Social Messenger → Configuration →
+                    Social Accounts</strong> and enter your credentials</li>
+                <li>Copy the <strong>Webhook URL</strong> from Odoo and paste it
+                    into Meta Developer Console → Webhooks</li>
+                <li>Subscribe to <strong>messages</strong> and
+                    <strong>messaging_postbacks</strong> events</li>
+                <li>Click <strong>Test Connection</strong> — you are ready!</li>
+            </ol>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container" style="padding: 30px 0;">
+    <div class="oe_row oe_spaced">
+        <h3 style="text-align: center; color: #875A7B;">Requirements</h3>
+    </div>
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12" style="text-align: center;">
+            <p style="font-size: 14px; line-height: 2;">
+                <strong>Odoo version:</strong> 19.0 (Community &amp; Enterprise)<br/>
+                <strong>Meta Developer App:</strong> Free at developers.facebook.com<br/>
+                <strong>Facebook Page:</strong> Connected to your Meta App<br/>
+                <strong>Instagram:</strong> Business or Creator account linked to your FB Page<br/>
+                <strong>HTTPS:</strong> Your Odoo instance must be publicly accessible with HTTPS
+                (Odoo Online / Odoo.sh fulfil this by default)<br/>
+                <strong>External Python libraries:</strong> None — uses only Odoo standard libraries
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark" style="padding: 20px 0;">
+    <div class="oe_row oe_spaced">
+        <div class="oe_span12" style="text-align: center;">
+            <h4 style="color: #875A7B;">Need Help?</h4>
+            <p>Open a support ticket via the Odoo Apps Store or contact the author directly.</p>
+        </div>
+    </div>
+</section>
