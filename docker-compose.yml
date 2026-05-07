@@ -41,6 +41,41 @@ services:
       start_period: 10s
 
   # ---------------------------------------------------------------------------
+  # Enterprise addons fetcher — clones/updates github.com/odoo/enterprise
+  # ---------------------------------------------------------------------------
+  # Runs on every deploy. Skips silently if no token is set (Community mode).
+  # Token + version come from Coolify env vars, never written to git.
+  # ---------------------------------------------------------------------------
+  enterprise-fetcher:
+    image: alpine/git:latest
+    container_name: mayie-enterprise-fetcher
+    restart: "no"
+    environment:
+      ODOO_ENTERPRISE_GITHUB_TOKEN: ${ODOO_ENTERPRISE_GITHUB_TOKEN:-}
+      ODOO_VERSION: ${ODOO_VERSION:-19.0}
+    entrypoint: >
+      /bin/sh -c "
+        if [ -z \"$$ODOO_ENTERPRISE_GITHUB_TOKEN\" ]; then
+          echo 'No GitHub token set — skipping enterprise fetch (Community mode).'
+          exit 0
+        fi
+        cd /enterprise
+        if [ -d .git ]; then
+          echo 'Updating enterprise addons (branch '$$ODOO_VERSION')...'
+          git remote set-url origin https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git
+          git fetch origin $$ODOO_VERSION
+          git reset --hard origin/$$ODOO_VERSION
+        else
+          echo 'Cloning enterprise addons (branch '$$ODOO_VERSION')...'
+          git clone --branch $$ODOO_VERSION --single-branch --depth 1 \
+            https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git .
+        fi
+        echo 'Enterprise addons ready.'
+      "
+    volumes:
+      - enterprise-addons:/enterprise
+
+  # ---------------------------------------------------------------------------
   # MinIO init — creates the Odoo attachments bucket on first run
   # ---------------------------------------------------------------------------
   createbuckets:
@@ -86,6 +121,8 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      enterprise-fetcher:
+        condition: service_completed_successfully
     ports:
       - "${ODOO_PORT:-8069}:8069"
       - "${ODOO_CHAT_PORT:-8072}:8072"
@@ -134,7 +171,7 @@ services:
       - odoo-data:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
-      - ${ENTERPRISE_ADDONS_PATH:-./addons/enterprise}:/mnt/extra-addons/enterprise:ro
+      - enterprise-addons:/mnt/extra-addons/enterprise:ro
     networks:
       - odoo-network
     healthcheck:
@@ -152,3 +189,4 @@ volumes:
   postgres-data:
   minio-data:
   odoo-data:
+  enterprise-addons:
