@@ -1,0 +1,46 @@
+# =============================================================================
+# Production overrides — Hetzner
+# =============================================================================
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   - No --dev flags (no auto-reload)
+#   - Workers enabled (multiprocessing mode)
+#   - Proxy mode on (behind nginx)
+#   - DB listing disabled (security)
+#   - MinIO console NOT exposed externally (nginx proxies it)
+#   - Resource limits set
+# =============================================================================
+
+services:
+  odoo:
+    command: >
+      sh -c "
+        ADDONS_PATH='/mnt/extra-addons/custom,/mnt/extra-addons/third_party'
+        if [ -n \"\$(ls -A /mnt/extra-addons/enterprise 2>/dev/null)\" ]; then
+          ADDONS_PATH='/mnt/extra-addons/enterprise,'$$ADDONS_PATH
+        fi
+        export ADDONS_PATH &&
+        envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
+        exec odoo -c /tmp/odoo.conf
+      "
+    environment:
+      ODOO_PROXY_MODE: "True"
+      ODOO_LOG_LEVEL: "warn"
+      ODOO_WORKERS: ${ODOO_WORKERS:-4}
+      ODOO_CRON_THREADS: ${ODOO_CRON_THREADS:-2}
+      ODOO_LIST_DB: "False"
+      ODOO_LIMIT_MEMORY_HARD: ${ODOO_LIMIT_MEMORY_HARD:-2684354560}
+      ODOO_LIMIT_MEMORY_SOFT: ${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
+      ODOO_LIMIT_TIME_CPU: ${ODOO_LIMIT_TIME_CPU:-60}
+      ODOO_LIMIT_TIME_REAL: ${ODOO_LIMIT_TIME_REAL:-120}
+    ports:
+      - "127.0.0.1:${ODOO_PORT:-8069}:8069"
+      - "127.0.0.1:${ODOO_CHAT_PORT:-8072}:8072"
+
+  minio:
+    ports:
+      # API only on localhost — nginx proxies console externally
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"

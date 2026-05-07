@@ -1,5 +1,5 @@
 [options]
-addons_path = /mnt/extra-addons/custom,/mnt/extra-addons/third_party,/usr/lib/python3/dist-packages/odoo/addons
+addons_path = ${ADDONS_PATH},/usr/lib/python3/dist-packages/odoo/addons
 db_host = db
 db_port = 5432
 db_user = ${POSTGRES_USER}
@@ -8,8 +8,23 @@ admin_passwd = ${ODOO_ADMIN_PASSWORD}
 data_dir = /var/lib/odoo
 http_port = 8069
 http_interface = 0.0.0.0
-proxy_mode = False
-log_level = info
-workers = 0
-max_cron_threads = 1
-list_db = True
+
+; --- Reverse proxy (set True in production behind nginx) ---
+proxy_mode = ${ODOO_PROXY_MODE:-False}
+
+; --- Logging ---
+log_level = ${ODOO_LOG_LEVEL:-info}
+
+; --- Workers (0 = single-threaded dev mode; set 4+ in production) ---
+workers = ${ODOO_WORKERS:-0}
+max_cron_threads = ${ODOO_CRON_THREADS:-1}
+
+; --- Security ---
+list_db = ${ODOO_LIST_DB:-True}
+
+; --- Memory / request limits ---
+limit_memory_hard = ${ODOO_LIMIT_MEMORY_HARD:-2684354560}
+limit_memory_soft = ${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
+limit_time_cpu = ${ODOO_LIMIT_TIME_CPU:-60}
+limit_time_real = ${ODOO_LIMIT_TIME_REAL:-120}
+limit_request = ${ODOO_LIMIT_REQUEST:-8192}

@@ -1,6 +1,10 @@
 # Environment variables (contains secrets)
 .env
 
+# Odoo Enterprise addons (proprietary — clone separately via scripts/deploy.sh)
+addons/enterprise/*
+!addons/enterprise/.gitkeep
+
 # Generated runtime config (rendered from template at startup)
 config/odoo.conf
 

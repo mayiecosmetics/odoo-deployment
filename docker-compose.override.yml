@@ -1,16 +1,19 @@
 # =============================================================================
 # Local development overrides
 # =============================================================================
-# This file is automatically picked up by Docker Compose alongside
-# docker-compose.yml. Use it for local development settings that should
-# NOT be deployed to production.
+# Automatically picked up alongside docker-compose.yml for local dev.
+# Do NOT use in production — use docker-compose.prod.yml instead.
 # =============================================================================
 
 services:
   odoo:
-    # Render config from template, then start Odoo in dev mode
     command: >
       sh -c "
+        ADDONS_PATH='/mnt/extra-addons/custom,/mnt/extra-addons/third_party'
+        if [ -n \"\$(ls -A /mnt/extra-addons/enterprise 2>/dev/null)\" ]; then
+          ADDONS_PATH='/mnt/extra-addons/enterprise,'$$ADDONS_PATH
+        fi
+        export ADDONS_PATH &&
         envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
         exec odoo -c /tmp/odoo.conf --dev=reload,qweb,xml
       "

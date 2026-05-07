@@ -16,7 +16,60 @@ services:
       - odoo-network
 
   # ---------------------------------------------------------------------------
-  # Odoo — ERP application
+  # MinIO — S3-compatible object storage for Odoo attachments
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: mayie-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - ./volumes/minio:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      - odoo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # MinIO init — creates the Odoo attachments bucket on first run
+  # ---------------------------------------------------------------------------
+  createbuckets:
+    image: minio/mc:latest
+    container_name: mayie-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-odoo-attachments}
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/$$S3_BUCKET &&
+        mc anonymous set none local/$$S3_BUCKET &&
+        echo 'Bucket $$S3_BUCKET is ready.' &&
+        exit 0
+      "
+    networks:
+      - odoo-network
+
+  # ---------------------------------------------------------------------------
+  # Odoo — ERP application (Community or Enterprise)
+  # ---------------------------------------------------------------------------
+  # Enterprise addons: clone https://github.com/odoo/enterprise into
+  # addons/enterprise/ (requires an active Odoo Enterprise subscription).
+  # If the directory is empty or absent, Odoo runs in Community mode.
   # ---------------------------------------------------------------------------
   # Config is generated at startup from config/odoo.conf.template via envsubst.
   # Secrets are injected from .env — never committed to Git.
@@ -28,15 +81,41 @@ services:
     container_name: mayie-odoo-app
     restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_started
+      minio:
+        condition: service_healthy
     ports:
       - "${ODOO_PORT:-8069}:8069"
+      - "${ODOO_CHAT_PORT:-8072}:8072"
     environment:
+      # Database
       POSTGRES_USER: ${POSTGRES_USER:-odoo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       ODOO_ADMIN_PASSWORD: ${ODOO_ADMIN_PASSWORD:?Set ODOO_ADMIN_PASSWORD in .env}
+      # Odoo tuning (overridable in .env)
+      ODOO_PROXY_MODE: ${ODOO_PROXY_MODE:-False}
+      ODOO_LOG_LEVEL: ${ODOO_LOG_LEVEL:-info}
+      ODOO_WORKERS: ${ODOO_WORKERS:-0}
+      ODOO_CRON_THREADS: ${ODOO_CRON_THREADS:-1}
+      ODOO_LIST_DB: ${ODOO_LIST_DB:-True}
+      ODOO_LIMIT_MEMORY_HARD: ${ODOO_LIMIT_MEMORY_HARD:-2684354560}
+      ODOO_LIMIT_MEMORY_SOFT: ${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
+      ODOO_LIMIT_TIME_CPU: ${ODOO_LIMIT_TIME_CPU:-60}
+      ODOO_LIMIT_TIME_REAL: ${ODOO_LIMIT_TIME_REAL:-120}
+      # S3 / MinIO (boto3 reads these natively)
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_BUCKETNAME: ${S3_BUCKET:-odoo-attachments}
+      AWS_REGION: ${S3_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
     command: >
       sh -c "
+        ADDONS_PATH='/mnt/extra-addons/custom,/mnt/extra-addons/third_party'
+        if [ -n \"\$(ls -A /mnt/extra-addons/enterprise 2>/dev/null)\" ]; then
+          ADDONS_PATH='/mnt/extra-addons/enterprise,'$$ADDONS_PATH
+        fi
+        export ADDONS_PATH &&
         envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
         exec odoo -c /tmp/odoo.conf
       "
@@ -45,6 +124,7 @@ services:
       - ./volumes/odoo:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
+      - ./addons/enterprise:/mnt/extra-addons/enterprise:ro
     networks:
       - odoo-network
 
