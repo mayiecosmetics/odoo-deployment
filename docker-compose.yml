@@ -46,6 +46,7 @@ services:
   createbuckets:
     image: minio/mc:latest
     container_name: mayie-minio-init
+    restart: "no"
     depends_on:
       minio:
         condition: service_healthy
@@ -58,7 +59,7 @@ services:
         mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
         mc mb --ignore-existing local/$$S3_BUCKET &&
         mc anonymous set none local/$$S3_BUCKET &&
-        echo 'Bucket $$S3_BUCKET is ready.' &&
+        echo 'Bucket is ready.' &&
         exit 0
       "
     networks:
@@ -136,6 +137,12 @@ services:
       - ${ENTERPRISE_ADDONS_PATH:-./addons/enterprise}:/mnt/extra-addons/enterprise:ro
     networks:
       - odoo-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8069/web/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 networks:
   odoo-network:
