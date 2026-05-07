@@ -53,25 +53,26 @@ services:
     environment:
       ODOO_ENTERPRISE_GITHUB_TOKEN: ${ODOO_ENTERPRISE_GITHUB_TOKEN:-}
       ODOO_VERSION: ${ODOO_VERSION:-19.0}
-    entrypoint: >
-      /bin/sh -c "
-        if [ -z \"$$ODOO_ENTERPRISE_GITHUB_TOKEN\" ]; then
-          echo 'No GitHub token set — skipping enterprise fetch (Community mode).'
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        if [ -z "$$ODOO_ENTERPRISE_GITHUB_TOKEN" ]; then
+          echo "No GitHub token set — skipping enterprise fetch (Community mode)."
           exit 0
         fi
         cd /enterprise
         if [ -d .git ]; then
-          echo 'Updating enterprise addons (branch '$$ODOO_VERSION')...'
-          git remote set-url origin https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git
-          git fetch origin $$ODOO_VERSION
-          git reset --hard origin/$$ODOO_VERSION
+          echo "Updating enterprise addons (branch $$ODOO_VERSION)..."
+          git remote set-url origin "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git"
+          git fetch origin "$$ODOO_VERSION"
+          git reset --hard "origin/$$ODOO_VERSION"
         else
-          echo 'Cloning enterprise addons (branch '$$ODOO_VERSION')...'
-          git clone --branch $$ODOO_VERSION --single-branch --depth 1 \
-            https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git .
+          echo "Cloning enterprise addons (branch $$ODOO_VERSION)..."
+          git clone --branch "$$ODOO_VERSION" --single-branch --depth 1 "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git" .
         fi
-        echo 'Enterprise addons ready.'
-      "
+        echo "Enterprise addons ready."
     volumes:
       - enterprise-addons:/enterprise
 
