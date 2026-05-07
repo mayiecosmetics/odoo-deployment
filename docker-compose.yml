@@ -120,7 +120,6 @@ services:
         exec odoo -c /tmp/odoo.conf
       "
     volumes:
-      - ./config/odoo.conf.template:/etc/odoo/odoo.conf.template:ro
       - ./volumes/odoo:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
