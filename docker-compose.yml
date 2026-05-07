@@ -109,6 +109,44 @@ services:
       - third-party-addons:/third_party
 
   # ---------------------------------------------------------------------------
+  # Custom addons fetcher — clones mayiecosmetics/odoo-custom-addons (private)
+  # ---------------------------------------------------------------------------
+  # Private repo, requires MAYIE_GITHUB_TOKEN env var (PAT with repo scope).
+  # Branch defaults to main; switch to e.g. '20.0' when migrating Odoo versions.
+  # ---------------------------------------------------------------------------
+  custom-fetcher:
+    image: alpine/git:latest
+    container_name: mayie-custom-fetcher
+    restart: "no"
+    environment:
+      MAYIE_GITHUB_TOKEN: ${MAYIE_GITHUB_TOKEN:-}
+      CUSTOM_REPO_PATH: ${CUSTOM_REPO_PATH:-mayiecosmetics/odoo-custom-addons}
+      CUSTOM_BRANCH: ${CUSTOM_BRANCH:-main}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        if [ -z "$$MAYIE_GITHUB_TOKEN" ]; then
+          echo "MAYIE_GITHUB_TOKEN not set — skipping custom addons fetch."
+          exit 0
+        fi
+        REPO_URL="https://$$MAYIE_GITHUB_TOKEN@github.com/$$CUSTOM_REPO_PATH.git"
+        cd /custom
+        if [ -d .git ]; then
+          echo "Updating custom addons (branch $$CUSTOM_BRANCH)..."
+          git remote set-url origin "$$REPO_URL"
+          git fetch origin "$$CUSTOM_BRANCH"
+          git reset --hard "origin/$$CUSTOM_BRANCH"
+        else
+          echo "Cloning custom addons (branch $$CUSTOM_BRANCH)..."
+          git clone --branch "$$CUSTOM_BRANCH" --single-branch --depth 1 "$$REPO_URL" .
+        fi
+        echo "Custom addons ready."
+    volumes:
+      - custom-addons:/custom
+
+  # ---------------------------------------------------------------------------
   # MinIO init — creates the Odoo attachments bucket on first run
   # ---------------------------------------------------------------------------
   createbuckets:
@@ -218,6 +256,8 @@ services:
         condition: service_completed_successfully
       third-party-fetcher:
         condition: service_completed_successfully
+      custom-fetcher:
+        condition: service_completed_successfully
     expose:
       - "8069"
       - "8072"
@@ -264,7 +304,7 @@ services:
       "
     volumes:
       - odoo-data:/var/lib/odoo
-      - ./addons/custom:/mnt/extra-addons/custom
+      - custom-addons:/mnt/extra-addons/custom:ro
       - third-party-addons:/mnt/extra-addons/third_party:ro
       - enterprise-addons:/mnt/extra-addons/enterprise:ro
     networks:
@@ -286,3 +326,4 @@ volumes:
   odoo-data:
   enterprise-addons:
   third-party-addons:
+  custom-addons:
