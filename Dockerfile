@@ -7,5 +7,6 @@ RUN apt-get update \
         boto3 \
         "fsspec[s3]>=2025.3.0" \
         python-slugify \
+        packaging \
  && rm -rf /var/lib/apt/lists/*
 USER odoo
