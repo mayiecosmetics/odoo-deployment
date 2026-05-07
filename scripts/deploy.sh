@@ -60,19 +60,17 @@ git pull origin main
 echo "[2/7] Syncing Odoo Enterprise addons..."
 ENTERPRISE_DIR="$PROJECT_DIR/addons/enterprise"
 
-if [ -z "${ODOO_ENTERPRISE_GITHUB_TOKEN:-}" ]; then
-    echo "  ⚠  ODOO_ENTERPRISE_GITHUB_TOKEN not set — skipping Enterprise addons."
-    echo "     Running in Community mode."
-else
+if [ -n "${ODOO_ENTERPRISE_GITHUB_TOKEN:-}" ]; then
+    # --- GitHub-token path: clone / update from odoo/enterprise repo ---
     ENTERPRISE_REPO="https://${ODOO_ENTERPRISE_GITHUB_TOKEN}@github.com/odoo/enterprise"
 
     if [ -d "$ENTERPRISE_DIR/.git" ]; then
-        echo "  Updating enterprise addons (branch $ODOO_VERSION)..."
+        echo "  Updating enterprise addons from GitHub (branch $ODOO_VERSION)..."
         git -C "$ENTERPRISE_DIR" fetch origin
         git -C "$ENTERPRISE_DIR" checkout "$ODOO_VERSION"
         git -C "$ENTERPRISE_DIR" pull origin "$ODOO_VERSION"
     else
-        echo "  Cloning enterprise addons (branch $ODOO_VERSION)..."
+        echo "  Cloning enterprise addons from GitHub (branch $ODOO_VERSION)..."
         rm -rf "$ENTERPRISE_DIR"
         git clone \
             --branch "$ODOO_VERSION" \
@@ -81,7 +79,18 @@ else
             "$ENTERPRISE_REPO" \
             "$ENTERPRISE_DIR"
     fi
-    echo "  Enterprise addons ready."
+    echo "  Enterprise addons ready (GitHub)."
+
+elif [ -d "$ENTERPRISE_DIR/web_enterprise" ]; then
+    # --- Pre-placed path: addons already uploaded (e.g. extracted from .deb) ---
+    echo "  Enterprise addons already present (pre-placed) ✓"
+    echo "  Skipping GitHub clone — using existing $ENTERPRISE_DIR"
+
+else
+    echo "  ⚠  No enterprise addons found."
+    echo "     Set ODOO_ENTERPRISE_GITHUB_TOKEN in .env, or"
+    echo "     rsync your extracted addons to: $ENTERPRISE_DIR"
+    echo "     Running in Community mode."
 fi
 
 # ---------------------------------------------------------------------------
@@ -123,7 +132,7 @@ echo "  Odoo is up."
 # ---------------------------------------------------------------------------
 echo "[6/7] Checking Enterprise activation..."
 
-if [ -z "${ODOO_ENTERPRISE_GITHUB_TOKEN:-}" ] || [ ! -d "$ENTERPRISE_DIR/web_enterprise" ]; then
+if [ ! -d "$ENTERPRISE_DIR/web_enterprise" ]; then
     echo "  Enterprise addons not present — running in Community mode."
 else
     # Check if web_enterprise is already installed in the DB
