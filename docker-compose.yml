@@ -124,7 +124,7 @@ services:
       - ./volumes/odoo:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
-      - ./addons/enterprise:/mnt/extra-addons/enterprise:ro
+      - ${ENTERPRISE_ADDONS_PATH:-./addons/enterprise}:/mnt/extra-addons/enterprise:ro
     networks:
       - odoo-network
 
