@@ -9,22 +9,22 @@ data_dir = /var/lib/odoo
 http_port = 8069
 http_interface = 0.0.0.0
 
-; --- Reverse proxy (set True in production behind nginx) ---
-proxy_mode = ${ODOO_PROXY_MODE:-False}
+; --- Reverse proxy (set True in production behind nginx/Coolify) ---
+proxy_mode = ${ODOO_PROXY_MODE}
 
 ; --- Logging ---
-log_level = ${ODOO_LOG_LEVEL:-info}
+log_level = ${ODOO_LOG_LEVEL}
 
 ; --- Workers (0 = single-threaded dev mode; set 4+ in production) ---
-workers = ${ODOO_WORKERS:-0}
-max_cron_threads = ${ODOO_CRON_THREADS:-1}
+workers = ${ODOO_WORKERS}
+max_cron_threads = ${ODOO_CRON_THREADS}
 
 ; --- Security ---
-list_db = ${ODOO_LIST_DB:-True}
+list_db = ${ODOO_LIST_DB}
 
 ; --- Memory / request limits ---
-limit_memory_hard = ${ODOO_LIMIT_MEMORY_HARD:-2684354560}
-limit_memory_soft = ${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
-limit_time_cpu = ${ODOO_LIMIT_TIME_CPU:-60}
-limit_time_real = ${ODOO_LIMIT_TIME_REAL:-120}
-limit_request = ${ODOO_LIMIT_REQUEST:-8192}
+limit_memory_hard = ${ODOO_LIMIT_MEMORY_HARD}
+limit_memory_soft = ${ODOO_LIMIT_MEMORY_SOFT}
+limit_time_cpu = ${ODOO_LIMIT_TIME_CPU}
+limit_time_real = ${ODOO_LIMIT_TIME_REAL}
+limit_request = ${ODOO_LIMIT_REQUEST}
