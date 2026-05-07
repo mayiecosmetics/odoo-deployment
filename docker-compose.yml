@@ -218,9 +218,9 @@ services:
         condition: service_completed_successfully
       third-party-fetcher:
         condition: service_completed_successfully
-    ports:
-      - "127.0.0.1:${ODOO_PORT:-8069}:8069"
-      - "127.0.0.1:${ODOO_CHAT_PORT:-8072}:8072"
+    expose:
+      - "8069"
+      - "8072"
     environment:
       # Database
       POSTGRES_USER: ${POSTGRES_USER:-odoo}
