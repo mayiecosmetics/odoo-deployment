@@ -124,9 +124,9 @@ services:
         condition: service_healthy
       enterprise-fetcher:
         condition: service_completed_successfully
-    ports:
-      - "${ODOO_PORT:-8069}:8069"
-      - "${ODOO_CHAT_PORT:-8072}:8072"
+    expose:
+      - "8069"
+      - "8072"
     environment:
       # Database
       POSTGRES_USER: ${POSTGRES_USER:-odoo}
