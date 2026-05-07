@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-odoo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - ./volumes/postgres:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     networks:
       - odoo-network
 
@@ -27,7 +27,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     volumes:
-      - ./volumes/minio:/data
+      - minio-data:/data
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -130,7 +130,7 @@ services:
         exec odoo -c /tmp/odoo.conf
       "
     volumes:
-      - ./volumes/odoo:/var/lib/odoo
+      - odoo-data:/var/lib/odoo
       - ./addons/custom:/mnt/extra-addons/custom
       - ./addons/third_party:/mnt/extra-addons/third_party
       - ${ENTERPRISE_ADDONS_PATH:-./addons/enterprise}:/mnt/extra-addons/enterprise:ro
@@ -140,3 +140,8 @@ services:
 networks:
   odoo-network:
     driver: bridge
+
+volumes:
+  postgres-data:
+  minio-data:
+  odoo-data:
