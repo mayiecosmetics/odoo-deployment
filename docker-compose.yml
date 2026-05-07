@@ -115,7 +115,17 @@ services:
         if [ -n \"\$(ls -A /mnt/extra-addons/enterprise 2>/dev/null)\" ]; then
           ADDONS_PATH='/mnt/extra-addons/enterprise,'$$ADDONS_PATH
         fi
-        export ADDONS_PATH &&
+        export ADDONS_PATH
+        export ODOO_PROXY_MODE=$${ODOO_PROXY_MODE:-False}
+        export ODOO_LOG_LEVEL=$${ODOO_LOG_LEVEL:-info}
+        export ODOO_WORKERS=$${ODOO_WORKERS:-0}
+        export ODOO_CRON_THREADS=$${ODOO_CRON_THREADS:-1}
+        export ODOO_LIST_DB=$${ODOO_LIST_DB:-True}
+        export ODOO_LIMIT_MEMORY_HARD=$${ODOO_LIMIT_MEMORY_HARD:-2684354560}
+        export ODOO_LIMIT_MEMORY_SOFT=$${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
+        export ODOO_LIMIT_TIME_CPU=$${ODOO_LIMIT_TIME_CPU:-60}
+        export ODOO_LIMIT_TIME_REAL=$${ODOO_LIMIT_TIME_REAL:-120}
+        export ODOO_LIMIT_REQUEST=$${ODOO_LIMIT_REQUEST:-8192}
         envsubst < /etc/odoo/odoo.conf.template > /tmp/odoo.conf &&
         exec odoo -c /tmp/odoo.conf
       "
