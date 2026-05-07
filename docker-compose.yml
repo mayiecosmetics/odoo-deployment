@@ -127,9 +127,73 @@ services:
         mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
         mc mb --ignore-existing local/$$S3_BUCKET &&
         mc anonymous set none local/$$S3_BUCKET &&
-        echo 'Bucket is ready.' &&
+        mc mb --ignore-existing local/$$BACKUP_BUCKET &&
+        mc anonymous set none local/$$BACKUP_BUCKET &&
+        echo 'Buckets ready.' &&
         exit 0
       "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-odoo-attachments}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-odoo-backups}
+    networks:
+      - odoo-network
+
+  # ---------------------------------------------------------------------------
+  # Database backup — pg_dumpall every BACKUP_INTERVAL_HOURS to MinIO
+  # ---------------------------------------------------------------------------
+  # Runs first backup ~30 s after start, then every N hours. Old backups
+  # beyond BACKUP_RETENTION_DAYS are pruned automatically.
+  # ---------------------------------------------------------------------------
+  db-backup:
+    image: alpine:latest
+    container_name: mayie-db-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-odoo-backups}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "[$$(date)] Installing tools..."
+        apk add --no-cache postgresql-client curl ca-certificates
+        curl -sLo /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+        chmod +x /usr/local/bin/mc
+        mc alias set minio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "minio/$$BACKUP_BUCKET" || true
+
+        echo "[$$(date)] Waiting 30s for db readiness..."
+        sleep 30
+
+        while true; do
+          TS=$$(date +%Y-%m-%d_%H-%M-%S)
+          FILE="pgdumpall-$$TS.sql.gz"
+          echo "[$$(date)] Starting backup -> $$FILE"
+          PGPASSWORD="$$POSTGRES_PASSWORD" pg_dumpall -h db -U "$$POSTGRES_USER" --no-password \
+            | gzip -9 \
+            | mc pipe "minio/$$BACKUP_BUCKET/$$FILE"
+          echo "[$$(date)] Uploaded $$FILE"
+
+          echo "[$$(date)] Pruning backups older than $${BACKUP_RETENTION_DAYS} days..."
+          mc rm --recursive --force --older-than "$${BACKUP_RETENTION_DAYS}d" "minio/$$BACKUP_BUCKET/" || true
+
+          SLEEP_SEC=$$((BACKUP_INTERVAL_HOURS * 3600))
+          echo "[$$(date)] Sleeping $${BACKUP_INTERVAL_HOURS}h..."
+          sleep "$$SLEEP_SEC"
+        done
     networks:
       - odoo-network
 
