@@ -127,20 +127,34 @@ services:
       - -c
       - |
         set -e
+        cd /custom
+        # Fault-tolerant by design: if the addons volume already has a clone,
+        # a failed/expired token (or network blip) must NOT crash the deploy —
+        # Odoo keeps running on the existing addons. A hard failure is only
+        # acceptable when there is nothing in the volume to fall back to.
         if [ -z "$$MAYIE_GITHUB_TOKEN" ]; then
-          echo "MAYIE_GITHUB_TOKEN not set — skipping custom addons fetch."
-          exit 0
+          if [ -d .git ]; then
+            echo "MAYIE_GITHUB_TOKEN not set — keeping existing custom addons."
+            exit 0
+          fi
+          echo "ERROR: MAYIE_GITHUB_TOKEN not set and no existing addons to use."
+          exit 1
         fi
         REPO_URL="https://$$MAYIE_GITHUB_TOKEN@github.com/$$CUSTOM_REPO_PATH.git"
-        cd /custom
         if [ -d .git ]; then
           echo "Updating custom addons (branch $$CUSTOM_BRANCH)..."
           git remote set-url origin "$$REPO_URL"
-          git fetch origin "$$CUSTOM_BRANCH"
-          git reset --hard "origin/$$CUSTOM_BRANCH"
+          if git fetch origin "$$CUSTOM_BRANCH" && git reset --hard "origin/$$CUSTOM_BRANCH"; then
+            echo "Custom addons updated."
+          else
+            echo "WARNING: fetch failed (expired token / network?) — keeping existing custom addons so the stack still starts."
+          fi
         else
           echo "Cloning custom addons (branch $$CUSTOM_BRANCH)..."
-          git clone --branch "$$CUSTOM_BRANCH" --single-branch --depth 1 "$$REPO_URL" .
+          if ! git clone --branch "$$CUSTOM_BRANCH" --single-branch --depth 1 "$$REPO_URL" .; then
+            echo "ERROR: clone failed and no existing addons present."
+            exit 1
+          fi
         fi
         echo "Custom addons ready."
     volumes:
