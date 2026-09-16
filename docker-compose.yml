@@ -53,6 +53,11 @@ services:
     environment:
       ODOO_ENTERPRISE_GITHUB_TOKEN: ${ODOO_ENTERPRISE_GITHUB_TOKEN:-}
       ODOO_VERSION: ${ODOO_VERSION:-19.0}
+      # Pin enterprise to the commit matching the Odoo core build in the Dockerfile
+      # (core 19.0-20260528 <-> enterprise 88d2e934e of 2026-06-06). Bump BOTH
+      # together on a planned upgrade; a floating branch head breaks the registry
+      # on every deploy/restart (outage of 2026-09-15).
+      ODOO_ENTERPRISE_REF: ${ODOO_ENTERPRISE_REF:-88d2e934eaf7eb37f72732bc1b9c1593a3ba1577}
     entrypoint:
       - /bin/sh
       - -c
@@ -66,11 +71,17 @@ services:
         if [ -d .git ]; then
           echo "Updating enterprise addons (branch $$ODOO_VERSION)..."
           git remote set-url origin "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git"
-          git fetch origin "$$ODOO_VERSION"
-          git reset --hard "origin/$$ODOO_VERSION"
         else
           echo "Cloning enterprise addons (branch $$ODOO_VERSION)..."
           git clone --branch "$$ODOO_VERSION" --single-branch --depth 1 "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git" .
+        fi
+        if [ -n "$$ODOO_ENTERPRISE_REF" ]; then
+          echo "Pinning enterprise addons to $$ODOO_ENTERPRISE_REF (must match the Odoo core build)..."
+          git fetch --depth 1 origin "$$ODOO_ENTERPRISE_REF" || git fetch origin "$$ODOO_VERSION"
+          git reset --hard "$$ODOO_ENTERPRISE_REF"
+        else
+          git fetch origin "$$ODOO_VERSION"
+          git reset --hard "origin/$$ODOO_VERSION"
         fi
         echo "Enterprise addons ready."
     volumes:
@@ -217,11 +228,10 @@ services:
       - |
         set -e
         echo "[$$(date)] Installing tools..."
-        apk add --no-cache postgresql-client curl ca-certificates
-        curl -sLo /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
-        chmod +x /usr/local/bin/mc
-        mc alias set minio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
-        mc mb --ignore-existing "minio/$$BACKUP_BUCKET" || true
+        apk add --no-cache postgresql-client rclone ca-certificates
+        export RCLONE_CONFIG_MINIO_TYPE=s3 RCLONE_CONFIG_MINIO_PROVIDER=Minio RCLONE_CONFIG_MINIO_ENDPOINT=http://minio:9000
+        export RCLONE_CONFIG_MINIO_ACCESS_KEY_ID="$$MINIO_ROOT_USER" RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY="$$MINIO_ROOT_PASSWORD"
+        rclone mkdir "minio:$$BACKUP_BUCKET"
 
         echo "[$$(date)] Waiting 30s for db readiness..."
         sleep 30
@@ -232,11 +242,11 @@ services:
           echo "[$$(date)] Starting backup -> $$FILE"
           PGPASSWORD="$$POSTGRES_PASSWORD" pg_dumpall -h db -U "$$POSTGRES_USER" --no-password \
             | gzip -9 \
-            | mc pipe "minio/$$BACKUP_BUCKET/$$FILE"
+            | rclone rcat "minio:$$BACKUP_BUCKET/$$FILE"
           echo "[$$(date)] Uploaded $$FILE"
 
           echo "[$$(date)] Pruning backups older than $${BACKUP_RETENTION_DAYS} days..."
-          mc rm --recursive --force --older-than "$${BACKUP_RETENTION_DAYS}d" "minio/$$BACKUP_BUCKET/" || true
+          rclone delete --min-age "$${BACKUP_RETENTION_DAYS}d" "minio:$$BACKUP_BUCKET" || true
 
           SLEEP_SEC=$$((BACKUP_INTERVAL_HOURS * 3600))
           echo "[$$(date)] Sleeping $${BACKUP_INTERVAL_HOURS}h..."
