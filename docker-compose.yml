@@ -270,6 +270,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mayie-odoo-app
+    labels:
+      # Coolify attaches this service to two networks (its own odoo-network and
+      # the app network the proxy lives on). Without this hint Traefik may pick
+      # the wrong one and answer 504/000 intermittently.
+      - traefik.docker.network=w75tkzcbr7om152wupubem1r
     restart: unless-stopped
     depends_on:
       db:
