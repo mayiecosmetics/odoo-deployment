@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
+# DEPRECATED — superseded by Coolify + docker-compose.yml. Do not use on prod:
+# step [2/7] pulls an UNPINNED enterprise branch head into addons/enterprise/,
+# a path docker-compose.yml no longer mounts (it uses the `enterprise-addons`
+# volume filled by the `enterprise-fetcher` service at the pinned
+# ODOO_ENTERPRISE_REF). Kept for reference / disaster recovery only.
+# =============================================================================
 # Odoo Enterprise Deployment Script — Hetzner
 # =============================================================================
 # Run this on your Hetzner server to deploy or update the stack.
@@ -25,6 +31,8 @@
 # =============================================================================
 
 set -euo pipefail
+
+echo "WARNING: scripts/deploy.sh is DEPRECATED — production deploys go through Coolify + docker-compose.yml; this script still pulls an UNPINNED enterprise head into addons/enterprise/, which compose no longer mounts. See README 'Core/enterprise pin'." >&2
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

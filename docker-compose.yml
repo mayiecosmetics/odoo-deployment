@@ -63,25 +63,75 @@ services:
       - -c
       - |
         set -e
+        cd /enterprise
+        # Fault-tolerant by design (same contract as custom-fetcher below): the
+        # odoo service waits on this one with service_completed_successfully, so
+        # a non-zero exit here takes the WHOLE stack down. An expired token, a
+        # GitHub outage or a DNS hiccup must never do that when the volume
+        # already holds a usable checkout. Hard failure is only acceptable when
+        # there is nothing to fall back to.
+        if [ -d .git ]; then HAD_CHECKOUT=1; else HAD_CHECKOUT=0; fi
         if [ -z "$$ODOO_ENTERPRISE_GITHUB_TOKEN" ]; then
-          echo "No GitHub token set — skipping enterprise fetch (Community mode)."
+          if [ "$$HAD_CHECKOUT" = "1" ]; then
+            echo "No GitHub token set — keeping existing enterprise addons."
+          else
+            echo "No GitHub token set — skipping enterprise fetch (Community mode)."
+          fi
           exit 0
         fi
-        cd /enterprise
-        if [ -d .git ]; then
-          echo "Updating enterprise addons (branch $$ODOO_VERSION)..."
-          git remote set-url origin "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git"
+        REPO_URL="https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git"
+        if [ "$$HAD_CHECKOUT" = "1" ]; then
+          # Always refresh the remote URL (token rotation) so a LATER fetch works,
+          # even on the fast path below where we do not fetch at all. `set-url`
+          # fails when the volume holds a repo with no origin — add it instead.
+          git remote set-url origin "$$REPO_URL" 2>/dev/null || git remote add origin "$$REPO_URL"
         else
           echo "Cloning enterprise addons (branch $$ODOO_VERSION)..."
-          git clone --branch "$$ODOO_VERSION" --single-branch --depth 1 "https://$$ODOO_ENTERPRISE_GITHUB_TOKEN@github.com/odoo/enterprise.git" .
+          if ! git clone --branch "$$ODOO_VERSION" --single-branch --depth 1 "$$REPO_URL" .; then
+            echo "ERROR: enterprise clone failed and no existing addons to fall back to."
+            exit 1
+          fi
         fi
         if [ -n "$$ODOO_ENTERPRISE_REF" ]; then
-          echo "Pinning enterprise addons to $$ODOO_ENTERPRISE_REF (must match the Odoo core build)..."
-          git fetch --depth 1 origin "$$ODOO_ENTERPRISE_REF" || git fetch origin "$$ODOO_VERSION"
-          git reset --hard "$$ODOO_ENTERPRISE_REF"
+          if git cat-file -e "$$ODOO_ENTERPRISE_REF^{commit}" 2>/dev/null; then
+            # FAST PATH — the pinned commit is already in the volume. Nothing
+            # about it can change, so do NOT touch the network: a dead token or
+            # a GitHub outage must not be able to block a restart.
+            echo "Pinned commit $$ODOO_ENTERPRISE_REF already present — skipping fetch (offline-safe restart)."
+            git reset --hard "$$ODOO_ENTERPRISE_REF"
+            git clean -fd
+          else
+            echo "Pinned commit $$ODOO_ENTERPRISE_REF not in volume — fetching from origin..."
+            if git fetch --depth 1 origin "$$ODOO_ENTERPRISE_REF" || git fetch origin "$$ODOO_VERSION"; then
+              git reset --hard "$$ODOO_ENTERPRISE_REF"
+              git clean -fd
+            elif [ "$$HAD_CHECKOUT" = "1" ]; then
+              echo "################################################################"
+              echo "WARNING: could not fetch pinned enterprise commit"
+              echo "WARNING:   $$ODOO_ENTERPRISE_REF"
+              echo "WARNING: (expired ODOO_ENTERPRISE_GITHUB_TOKEN / GitHub outage / DNS?)"
+              echo "WARNING: Keeping the EXISTING enterprise checkout so the stack still"
+              echo "WARNING: starts. The addons may NOT match the pinned core build —"
+              echo "WARNING: fix the token/network and redeploy."
+              echo "################################################################"
+              exit 0
+            else
+              echo "ERROR: pinned enterprise commit unreachable and the volume was empty."
+              exit 1
+            fi
+          fi
         else
-          git fetch origin "$$ODOO_VERSION"
-          git reset --hard "origin/$$ODOO_VERSION"
+          echo "No ODOO_ENTERPRISE_REF set — tracking branch head $$ODOO_VERSION (NOT recommended)."
+          if git fetch origin "$$ODOO_VERSION"; then
+            git reset --hard "origin/$$ODOO_VERSION"
+            git clean -fd
+          elif [ "$$HAD_CHECKOUT" = "1" ]; then
+            echo "WARNING: fetch failed (expired token / network?) — keeping existing enterprise addons so the stack still starts."
+            exit 0
+          else
+            echo "ERROR: fetch failed and no existing enterprise addons to fall back to."
+            exit 1
+          fi
         fi
         echo "Enterprise addons ready."
     volumes:
@@ -106,14 +156,24 @@ services:
       - |
         set -e
         cd /third_party
+        # Same fault tolerance as the other fetchers: odoo depends on this with
+        # service_completed_successfully, so a network blip must not stop the
+        # stack when the volume already holds a checkout.
         if [ -d .git ]; then
           echo "Updating third-party addons (branch $$THIRD_PARTY_BRANCH)..."
-          git remote set-url origin "$$THIRD_PARTY_REPO"
-          git fetch origin "$$THIRD_PARTY_BRANCH"
-          git reset --hard "origin/$$THIRD_PARTY_BRANCH"
+          git remote set-url origin "$$THIRD_PARTY_REPO" 2>/dev/null || git remote add origin "$$THIRD_PARTY_REPO"
+          if git fetch origin "$$THIRD_PARTY_BRANCH" && git reset --hard "origin/$$THIRD_PARTY_BRANCH"; then
+            git clean -fd
+            echo "Third-party addons updated."
+          else
+            echo "WARNING: fetch failed (network / repo moved?) — keeping existing third-party addons so the stack still starts."
+          fi
         else
           echo "Cloning third-party addons (branch $$THIRD_PARTY_BRANCH)..."
-          git clone --branch "$$THIRD_PARTY_BRANCH" --single-branch --depth 1 "$$THIRD_PARTY_REPO" .
+          if ! git clone --branch "$$THIRD_PARTY_BRANCH" --single-branch --depth 1 "$$THIRD_PARTY_REPO" .; then
+            echo "ERROR: clone failed and no existing third-party addons to fall back to."
+            exit 1
+          fi
         fi
         echo "Third-party addons ready."
     volumes:
@@ -222,11 +282,21 @@ services:
       BACKUP_BUCKET: ${BACKUP_BUCKET:-odoo-backups}
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      # Sanity floor: a gzipped pg_dumpall of this cluster is far larger than
+      # 1 MiB. Anything smaller means a truncated/failed dump — never upload it.
+      BACKUP_MIN_BYTES: ${BACKUP_MIN_BYTES:-1048576}
+      # Seconds to wait before retrying after a FAILED backup (default 10 min).
+      BACKUP_RETRY_SECONDS: ${BACKUP_RETRY_SECONDS:-600}
     entrypoint:
       - /bin/sh
       - -c
       - |
         set -e
+        # pipefail is ESSENTIAL here: busybox ash returns only the LAST command's
+        # status for a pipeline, so `pg_dumpall | gzip | rclone` reported success
+        # even when pg_dumpall died mid-dump and a truncated archive was stored
+        # as a "good" backup. (Verified: busybox ash supports `set -o pipefail`.)
+        set -o pipefail
         echo "[$$(date)] Installing tools..."
         apk add --no-cache postgresql-client rclone ca-certificates
         export RCLONE_CONFIG_MINIO_TYPE=s3 RCLONE_CONFIG_MINIO_PROVIDER=Minio RCLONE_CONFIG_MINIO_ENDPOINT=http://minio:9000
@@ -239,11 +309,50 @@ services:
         while true; do
           TS=$$(date +%Y-%m-%d_%H-%M-%S)
           FILE="pgdumpall-$$TS.sql.gz"
+          TMP="/tmp/$$FILE"
+          FAIL=""
+          SIZE=0
+          rm -f "$$TMP"
           echo "[$$(date)] Starting backup -> $$FILE"
+
+          # 1. Dump to a LOCAL temp file first — never stream straight to object
+          #    storage, or a half-written dump becomes a published "backup".
           PGPASSWORD="$$POSTGRES_PASSWORD" pg_dumpall -h db -U "$$POSTGRES_USER" --no-password \
-            | gzip -9 \
-            | rclone rcat "minio:$$BACKUP_BUCKET/$$FILE"
-          echo "[$$(date)] Uploaded $$FILE"
+            | gzip -9 > "$$TMP" || FAIL="pg_dumpall/gzip pipeline failed (exit $$?)"
+
+          # 2. The gzip stream must be complete and intact.
+          if [ -z "$$FAIL" ] && ! gzip -t "$$TMP" 2>/dev/null; then
+            FAIL="gzip integrity check failed — dump is truncated or corrupt"
+          fi
+
+          # 3. ...and non-trivially sized.
+          if [ -z "$$FAIL" ]; then
+            SIZE=$$(wc -c < "$$TMP" | tr -d " ")
+            if [ "$$SIZE" -lt "$$BACKUP_MIN_BYTES" ]; then
+              FAIL="dump is only $$SIZE bytes (< $$BACKUP_MIN_BYTES) — refusing to upload"
+            fi
+          fi
+
+          # 4. Only a dump that passed every check gets uploaded.
+          if [ -z "$$FAIL" ]; then
+            rclone copyto "$$TMP" "minio:$$BACKUP_BUCKET/$$FILE" || FAIL="rclone upload failed (exit $$?)"
+          fi
+          rm -f "$$TMP"
+
+          if [ -n "$$FAIL" ]; then
+            echo "################################################################"
+            echo "[$$(date)] ERROR: BACKUP FAILED — $$FAIL"
+            echo "[$$(date)] ERROR: nothing was uploaded for this cycle; the last"
+            echo "[$$(date)] ERROR: good backup in the bucket is untouched."
+            echo "################################################################"
+            # Retry instead of exiting: crashing here would restart-loop the
+            # container (restart: unless-stopped) and spam apk on every attempt.
+            echo "[$$(date)] Retrying in $${BACKUP_RETRY_SECONDS}s..."
+            sleep "$$BACKUP_RETRY_SECONDS"
+            continue
+          fi
+
+          echo "[$$(date)] Uploaded $$FILE ($$SIZE bytes, gzip verified)"
 
           echo "[$$(date)] Pruning backups older than $${BACKUP_RETENTION_DAYS} days..."
           rclone delete --min-age "$${BACKUP_RETENTION_DAYS}d" "minio:$$BACKUP_BUCKET" || true

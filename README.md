@@ -86,6 +86,67 @@ All configuration is controlled via `.env`. One credential set for both PostgreS
 | `ODOO_ADMIN_PASSWORD` | Odoo master/admin password | — |
 | `BACKUP_RETENTION_DAYS` | Auto-delete backups older than N days | `30` |
 
+## Core/enterprise pin
+
+**The Odoo core image and the Enterprise addons are a matched pair. Bump them together or not at all.**
+
+| Where | What | Current value |
+|-------|------|---------------|
+| `Dockerfile` | `FROM odoo:19.0-20260528` | dated core build |
+| `docker-compose.yml` → `enterprise-fetcher` | `ODOO_ENTERPRISE_REF` | `88d2e934eaf7eb37f72732bc1b9c1593a3ba1577` (2026-06-06) |
+
+Enterprise addons import from core and vice-versa. A core build newer or older
+than the enterprise commit fails to load the registry — this caused the outage
+of 2026-09-15. When upgrading, change **both** lines in the **same commit**.
+
+### Gotchas
+
+- **Coolify's UI wins.** `ODOO_ENTERPRISE_REF` is written as `${ODOO_ENTERPRISE_REF:-<sha>}`,
+  so the compose default only applies when the variable is *unset*. If someone sets
+  `ODOO_ENTERPRISE_REF` in Coolify's environment-variables screen, that value silently
+  overrides this repo and the pair desyncs with nothing in git to show for it.
+  Before debugging a registry failure, check Coolify's env screen first.
+  The same applies to `ODOO_VERSION`, `THIRD_PARTY_BRANCH` and `CUSTOM_BRANCH`.
+- **The fetchers reset the addon volumes on every `compose up`.** `enterprise-fetcher`,
+  `third-party-fetcher` and `custom-fetcher` run `git reset --hard` + `git clean -fd`
+  against `enterprise-addons`, `third-party-addons` and `custom-addons`. Anything
+  hand-edited inside those volumes is destroyed on the next deploy — patch the source
+  repo instead. Third-party and custom track their **branch heads**, so a merge into
+  `main` ships on the next restart, planned or not.
+- **Fetch failures are tolerated, on purpose.** If the pinned enterprise commit is
+  already in the volume, the fetcher does not touch the network at all, so an expired
+  `ODOO_ENTERPRISE_GITHUB_TOKEN` or a GitHub outage cannot block a restart. If a fetch
+  *is* needed and fails while the volume already holds a checkout, the fetcher logs a
+  loud `WARNING` and exits 0 rather than taking the stack down with it (`odoo` depends
+  on the fetchers with `condition: service_completed_successfully`). **Read the fetcher
+  logs after a deploy** — a warning there means the addons may not match the pinned core.
+  A hard failure happens only when there is nothing in the volume to fall back to.
+
+### Bumping the pair
+
+1. Pick the new dated core tag, e.g. `odoo:19.0-<YYYYMMDD>`.
+2. Find the `odoo/enterprise` commit on branch `19.0` from the same day.
+3. Edit `Dockerfile` (`FROM`) and `docker-compose.yml` (`ODOO_ENTERPRISE_REF` default).
+4. Make sure no override exists in Coolify, then redeploy and rebuild the image.
+
+## Database backups (`db-backup` service)
+
+`pg_dumpall` runs every `BACKUP_INTERVAL_HOURS` into the MinIO `BACKUP_BUCKET`.
+The dump is written to a local temp file and only uploaded once it has passed
+three checks: the `pg_dumpall | gzip` pipeline exited 0 (`set -o pipefail` —
+without it busybox reports only `rclone`'s status and a truncated dump is stored
+as a good backup), `gzip -t` validates the archive, and the file is at least
+`BACKUP_MIN_BYTES` (default 1 MiB). A failed check uploads nothing, leaves the
+previous good backup untouched, logs an error and retries after
+`BACKUP_RETRY_SECONDS` (default 600) instead of crashing into a restart loop.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `BACKUP_INTERVAL_HOURS` | Hours between backups | `24` |
+| `BACKUP_RETENTION_DAYS` | Prune backups older than N days | `30` |
+| `BACKUP_MIN_BYTES` | Reject dumps smaller than this | `1048576` |
+| `BACKUP_RETRY_SECONDS` | Wait after a failed backup | `600` |
+
 ## How the Repositories Connect
 
 The deployment repo mounts addon directories into the Odoo container:
