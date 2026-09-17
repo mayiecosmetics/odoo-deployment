@@ -19,7 +19,10 @@ services:
   # MinIO — S3-compatible object storage for Odoo attachments
   # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    # MinIO removed minio/minio and minio/mc from Docker Hub; that name now fails
+    # to pull, and Coolify's image prune deletes the local tags, so compose must
+    # reference a registry that still exists. Pinned, not :latest.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: mayie-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -235,7 +238,9 @@ services:
   # MinIO init — creates the Odoo attachments bucket on first run
   # ---------------------------------------------------------------------------
   createbuckets:
-    image: minio/mc:latest
+    # Same reason as the minio service above: minio/mc no longer exists on Docker
+    # Hub, and a pruned local tag turns every later deploy into an outage.
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: mayie-minio-init
     restart: "no"
     depends_on:
