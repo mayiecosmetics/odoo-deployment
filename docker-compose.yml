@@ -16,34 +16,6 @@ services:
       - odoo-network
 
   # ---------------------------------------------------------------------------
-  # MinIO — S3-compatible object storage for Odoo attachments
-  # ---------------------------------------------------------------------------
-  minio:
-    # MinIO removed minio/minio and minio/mc from Docker Hub; that name now fails
-    # to pull, and Coolify's image prune deletes the local tags, so compose must
-    # reference a registry that still exists. Pinned, not :latest.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: mayie-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-    volumes:
-      - minio-data:/data
-    expose:
-      - "9000"
-      - "9001"
-    networks:
-      - odoo-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-
-  # ---------------------------------------------------------------------------
   # Enterprise addons fetcher — clones/updates github.com/odoo/enterprise
   # ---------------------------------------------------------------------------
   # Runs on every deploy. Skips silently if no token is set (Community mode).
@@ -235,37 +207,9 @@ services:
       - custom-addons:/custom
 
   # ---------------------------------------------------------------------------
-  # MinIO init — creates the Odoo attachments bucket on first run
-  # ---------------------------------------------------------------------------
-  createbuckets:
-    # Same reason as the minio service above: minio/mc no longer exists on Docker
-    # Hub, and a pruned local tag turns every later deploy into an outage.
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    container_name: mayie-minio-init
-    restart: "no"
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      S3_BUCKET: ${S3_BUCKET:-odoo-attachments}
-      BACKUP_BUCKET: ${BACKUP_BUCKET:-odoo-backups}
-    entrypoint: >
-      /bin/sh -c "
-        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
-        mc mb --ignore-existing local/$$S3_BUCKET &&
-        mc anonymous set none local/$$S3_BUCKET &&
-        mc mb --ignore-existing local/$$BACKUP_BUCKET &&
-        mc anonymous set none local/$$BACKUP_BUCKET &&
-        echo 'Buckets ready.' &&
-        exit 0
-      "
-    networks:
-      - odoo-network
-
-  # ---------------------------------------------------------------------------
-  # Database backup — pg_dumpall every BACKUP_INTERVAL_HOURS to MinIO
+  # Database backup — pg_dumpall every BACKUP_INTERVAL_HOURS to Hetzner
+  # Object Storage (hel1), offsite. MinIO removed 2026-09-19: attachments and
+  # backups both live on Hetzner now; this service no longer touches MinIO.
   # ---------------------------------------------------------------------------
   # Runs first backup ~30 s after start, then every N hours. Old backups
   # beyond BACKUP_RETENTION_DAYS are pruned automatically.
@@ -277,14 +221,11 @@ services:
     depends_on:
       db:
         condition: service_started
-      minio:
-        condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-odoo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       BACKUP_BUCKET: ${BACKUP_BUCKET:-odoo-backups}
+      BACKUP_BUCKET_HETZNER: ${BACKUP_BUCKET_HETZNER:-mayie-odoo-db-backups}
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       # Sanity floor: a gzipped pg_dumpall of this cluster is far larger than
@@ -304,9 +245,9 @@ services:
         set -o pipefail
         echo "[$$(date)] Installing tools..."
         apk add --no-cache postgresql-client rclone ca-certificates
-        export RCLONE_CONFIG_MINIO_TYPE=s3 RCLONE_CONFIG_MINIO_PROVIDER=Minio RCLONE_CONFIG_MINIO_ENDPOINT=http://minio:9000
-        export RCLONE_CONFIG_MINIO_ACCESS_KEY_ID="$$MINIO_ROOT_USER" RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY="$$MINIO_ROOT_PASSWORD"
-        rclone mkdir "minio:$$BACKUP_BUCKET"
+        export RCLONE_CONFIG_HETZNER_TYPE=s3 RCLONE_CONFIG_HETZNER_PROVIDER=Other RCLONE_CONFIG_HETZNER_ENDPOINT="$$HETZNER_S3_ENDPOINT" RCLONE_CONFIG_HETZNER_REGION="$$HETZNER_S3_REGION"
+        export RCLONE_CONFIG_HETZNER_ACCESS_KEY_ID="$$HETZNER_S3_ACCESS_KEY" RCLONE_CONFIG_HETZNER_SECRET_ACCESS_KEY="$$HETZNER_S3_SECRET_KEY"
+        rclone mkdir "hetzner:$$BACKUP_BUCKET_HETZNER"
 
         echo "[$$(date)] Waiting 30s for db readiness..."
         sleep 30
@@ -340,7 +281,7 @@ services:
 
           # 4. Only a dump that passed every check gets uploaded.
           if [ -z "$$FAIL" ]; then
-            rclone copyto "$$TMP" "minio:$$BACKUP_BUCKET/$$FILE" || FAIL="rclone upload failed (exit $$?)"
+            rclone copyto "$$TMP" "hetzner:$$BACKUP_BUCKET_HETZNER/$$FILE" || FAIL="rclone upload to Hetzner failed (exit $$?)"
           fi
           rm -f "$$TMP"
 
@@ -360,7 +301,7 @@ services:
           echo "[$$(date)] Uploaded $$FILE ($$SIZE bytes, gzip verified)"
 
           echo "[$$(date)] Pruning backups older than $${BACKUP_RETENTION_DAYS} days..."
-          rclone delete --min-age "$${BACKUP_RETENTION_DAYS}d" "minio:$$BACKUP_BUCKET" || true
+          rclone delete --min-age "$${BACKUP_RETENTION_DAYS}d" "hetzner:$$BACKUP_BUCKET_HETZNER" || true
 
           SLEEP_SEC=$$((BACKUP_INTERVAL_HOURS * 3600))
           echo "[$$(date)] Sleeping $${BACKUP_INTERVAL_HOURS}h..."
@@ -393,8 +334,6 @@ services:
     depends_on:
       db:
         condition: service_started
-      minio:
-        condition: service_healthy
       enterprise-fetcher:
         condition: service_completed_successfully
       third-party-fetcher:
@@ -465,7 +404,6 @@ networks:
 
 volumes:
   postgres-data:
-  minio-data:
   odoo-data:
   enterprise-addons:
   third-party-addons:
