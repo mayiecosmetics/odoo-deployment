@@ -358,12 +358,6 @@ services:
       ODOO_LIMIT_MEMORY_SOFT: ${ODOO_LIMIT_MEMORY_SOFT:-2147483648}
       ODOO_LIMIT_TIME_CPU: ${ODOO_LIMIT_TIME_CPU:-60}
       ODOO_LIMIT_TIME_REAL: ${ODOO_LIMIT_TIME_REAL:-120}
-      # S3 / MinIO (boto3 reads these natively)
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      AWS_BUCKETNAME: ${S3_BUCKET:-odoo-attachments}
-      AWS_REGION: ${S3_REGION:-us-east-1}
-      AWS_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
     command: >
       sh -c "
         ADDONS_PATH='/mnt/extra-addons/custom,/mnt/extra-addons/third_party'
