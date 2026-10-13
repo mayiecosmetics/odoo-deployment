@@ -463,6 +463,11 @@ services:
       - --denied-peer-ip=198.51.100.0-198.51.100.255
       - --denied-peer-ip=203.0.113.0-203.0.113.255
       - --denied-peer-ip=240.0.0.0-255.255.255.255
+      # Relay-to-relay (both participants on TURN): coturn maps a peer at its
+      # own --external-ip back to its container address and relays internally,
+      # which the 10.0.0.0/8 deny above would block. Allow only that one IP,
+      # resolved at start (the docker0 address can change between deploys).
+      - --allowed-peer-ip=$$(hostname -i)
 
 networks:
   odoo-network:

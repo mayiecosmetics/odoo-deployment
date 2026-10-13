@@ -156,8 +156,10 @@ with no audio or video. `coturn` relays media for those participants; everyone
 else still connects directly and costs this server nothing.
 
 **Ports** (published by Docker, so they bypass ufw like Traefik's 80/443):
-`3478/udp`, `3478/tcp`, relay range `49160-49219/udp`. If a Hetzner Cloud
-Firewall is ever put in front of the server, open the same ports there.
+`3478/udp`, `3478/tcp`, relay range `49160-49219/udp`. The server also sits
+behind a **Hetzner Cloud Firewall** (Cloud Console → Firewalls) that drops
+everything except what it lists; these three rules have to be open there too,
+or coturn runs but nothing reaches it.
 
 **Password:** `SERVICE_PASSWORD_COTURN`, a Coolify magic variable generated on
 the first deploy (Coolify → the odoo-deployment app → Environment Variables).
@@ -183,9 +185,11 @@ leaked credential from reaching anything inside the server.
 **Known limits:**
 - No TURN over TLS on 443 (Traefik owns 443). A network that allows only
   HTTPS out will still fail; TURN over TCP 3478 covers most of the rest.
-- Relay-to-relay (both participants forced onto TURN at the same time) has to
-  hairpin through the host's public IP, which ufw blocks on `docker0`. Rare;
-  it needs both sides to have no usable UDP path at all.
+- Only IPv4 relays (the container has no public IPv6).
+
+Relay-to-relay (both participants on TURN) works because coturn maps its own
+`--external-ip` back to the container address and relays internally; the
+compose file allows exactly that address through the `10.0.0.0/8` deny.
 
 **Smoke test** from any machine outside the server (allocation should
 succeed; `-e` is only the peer address the test sends to):
