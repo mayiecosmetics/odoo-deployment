@@ -147,6 +147,53 @@ previous good backup untouched, logs an error and retries after
 | `BACKUP_MIN_BYTES` | Reject dumps smaller than this | `1048576` |
 | `BACKUP_RETRY_SECONDS` | Wait after a failed backup | `600` |
 
+## Discuss calls: STUN/TURN relay (`coturn` service)
+
+Discuss audio/video calls are peer-to-peer WebRTC. Out of the box Odoo only
+knows Google's public STUN servers, so a participant behind a strict NAT or
+firewall (corporate network, some mobile carriers, hotel Wi-Fi) joins the call
+with no audio or video. `coturn` relays media for those participants; everyone
+else still connects directly and costs this server nothing.
+
+**Ports** (published by Docker, so they bypass ufw like Traefik's 80/443):
+`3478/udp`, `3478/tcp`, relay range `49160-49219/udp`. If a Hetzner Cloud
+Firewall is ever put in front of the server, open the same ports there.
+
+**Password:** `SERVICE_PASSWORD_COTURN`, a Coolify magic variable generated on
+the first deploy (Coolify → the odoo-deployment app → Environment Variables).
+User name is `odoo`.
+
+**Odoo side** (Settings → Technical → Discuss → ICE servers, debug mode). Odoo
+sends at most 5 entries to the browser; once any exist they replace the Google
+defaults:
+
+| Type | URI | Username / credential |
+|------|-----|-----------------------|
+| `stun:` | `erp.mayie.ro:3478` | — |
+| `turn:` | `erp.mayie.ro:3478?transport=udp` | `odoo` / the password |
+| `turn:` | `erp.mayie.ro:3478?transport=tcp` | `odoo` / the password |
+| `stun:` | `stun1.l.google.com:19302` | — (fallback if coturn is down) |
+
+**Rotating the password:** change `SERVICE_PASSWORD_COTURN` in Coolify,
+redeploy, then update both `turn:` records. Odoo gives the credential to every
+browser in a call, guests included, so rotate it if it leaks into the wrong
+hands; the coturn flags (private peers denied, no TCP relay, quotas) keep a
+leaked credential from reaching anything inside the server.
+
+**Known limits:**
+- No TURN over TLS on 443 (Traefik owns 443). A network that allows only
+  HTTPS out will still fail; TURN over TCP 3478 covers most of the rest.
+- Relay-to-relay (both participants forced onto TURN at the same time) has to
+  hairpin through the host's public IP, which ufw blocks on `docker0`. Rare;
+  it needs both sides to have no usable UDP path at all.
+
+**Smoke test** from any machine outside the server (allocation should
+succeed; `-e` is only the peer address the test sends to):
+
+```bash
+docker run --rm --entrypoint turnutils_uclient coturn/coturn:4.18.0 -u odoo -w '<password>' -n 1 -m 1 -e 8.8.8.8 erp.mayie.ro
+```
+
 ## How the Repositories Connect
 
 The deployment repo mounts addon directories into the Odoo container:

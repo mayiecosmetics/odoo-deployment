@@ -392,6 +392,78 @@ services:
       retries: 5
       start_period: 60s
 
+  # ---------------------------------------------------------------------------
+  # coturn — STUN/TURN relay for Discuss audio/video calls
+  # ---------------------------------------------------------------------------
+  # Discuss calls are peer-to-peer WebRTC: media goes browser to browser and
+  # never touches this server, unless a participant sits behind a NAT/firewall
+  # that blocks direct UDP (corporate networks, some mobile carriers, hotel
+  # Wi-Fi). Without a TURN server those calls connect with no audio/video.
+  # Odoo side: Settings → Technical → Discuss → ICE servers (see README).
+  #
+  # The credential is static and Odoo hands it to every browser in a call,
+  # guests included, so treat it as semi-public. What keeps this from being an
+  # open relay into the host: private/internal peers denied (10.0.0.0/8 is
+  # every Docker network on this box, 100.64.0.0/10 is Tailscale), no TCP
+  # relay, allocation and per-session bandwidth caps.
+  #
+  # network_mode: bridge (Docker's default bridge, nothing else on it) is
+  # deliberate. Coolify attaches every service to all top-level networks plus
+  # its own; two container IPs would give coturn two relay addresses behind
+  # one published port, and would put it on odoo-network next to Postgres.
+  # With network_mode set Coolify leaves the networks alone.
+  #
+  # Published ports bypass ufw through Docker's own iptables chains, same as
+  # Traefik's 80/443. The relay range is kept small because Docker starts one
+  # docker-proxy process per published port; --total-quota matches it.
+  # ---------------------------------------------------------------------------
+  coturn:
+    image: coturn/coturn:4.18.0
+    container_name: mayie-coturn
+    restart: unless-stopped
+    network_mode: bridge
+    environment:
+      # Coolify magic variable: generated on first deploy, kept afterwards.
+      # Copy it into the Odoo ICE server records (Coolify → Environment Variables).
+      TURN_PASSWORD: ${SERVICE_PASSWORD_COTURN}
+    ports:
+      - "0.0.0.0:3478:3478/udp"
+      - "0.0.0.0:3478:3478/tcp"
+      - "0.0.0.0:49160-49219:49160-49219/udp"
+    command:
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49219
+      # Public IP of the Hetzner host; the container only has a docker0 address.
+      - --external-ip=${TURN_EXTERNAL_IP:-178.104.167.5}
+      - --realm=erp.mayie.ro
+      - --lt-cred-mech
+      - --fingerprint
+      # The image entrypoint evals each argument, so $$TURN_PASSWORD expands
+      # inside the container instead of being written into the compose file.
+      - --user=odoo:$$TURN_PASSWORD
+      - --no-tls
+      - --no-tcp-relay
+      - --no-multicast-peers
+      - --stale-nonce=600
+      - --total-quota=60
+      - --user-quota=60
+      # bytes/s per session and direction (~5 Mbit/s, enough for HD + screen share)
+      - --max-bps=625000
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.0.0.0-192.0.2.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=198.18.0.0-198.19.255.255
+      - --denied-peer-ip=198.51.100.0-198.51.100.255
+      - --denied-peer-ip=203.0.113.0-203.0.113.255
+      - --denied-peer-ip=240.0.0.0-255.255.255.255
+
 networks:
   odoo-network:
     driver: bridge
