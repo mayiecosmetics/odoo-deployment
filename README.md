@@ -128,6 +128,33 @@ of 2026-09-15. When upgrading, change **both** lines in the **same commit**.
 2. Find the `odoo/enterprise` commit on branch `19.0` from the same day.
 3. Edit `Dockerfile` (`FROM`) and `docker-compose.yml` (`ODOO_ENTERPRISE_REF` default).
 4. Make sure no override exists in Coolify, then redeploy and rebuild the image.
+   On 2026-11-23 Coolify's environment **did** carry `ODOO_ENTERPRISE_REF=88d2e934…`,
+   so the value has to be changed (or removed) there as well, or the bump is ignored.
+5. Delete every file in `patches/` whose header says the new build already contains
+   it. A patch that is already in the core fails the image build on purpose.
+
+## Security hotfixes (`patches/`)
+
+Docker Hub's `odoo:19.0-<date>` tags lag the nightly builds by days to weeks, and
+moving the core/enterprise pair is a planned upgrade, not something to do in a hurry.
+When Odoo publishes a security advisory that affects the pinned build, the fix is
+carried as a patch on top of the pin until the next planned bump.
+
+- One file per advisory in `patches/`, applied at image build with
+  `patch -p1 -N -d /usr/lib/python3/dist-packages` (see `Dockerfile`). The header of
+  each file lists the upstream commits it carries and the first core build that
+  already contains them.
+- The build fails if a patch does not apply, and the last build step imports the
+  patched module and asserts the fix is live. A green build means the fix is in the
+  running code.
+- Advisories arrive by email from `security-noreply@odoo.com` (Enterprise
+  subscription). The full text is on `https://www.odoo.com/security-advisories`,
+  behind the Enterprise subscription code. It names the affected component but not
+  the fixing commit: look at the recent history of that file on `odoo/odoo` `19.0`.
+
+| Patch | Advisory | Carried until core is at least |
+|-------|----------|--------------------------------|
+| `0001-CVE-2026-130029-html-normalize.patch` | ODOO-SA-2026-11-23, stored XSS through the HTML sanitizer on libxml2 < 2.10 | `19.0-20261121` |
 
 ## Database backups (`db-backup` service)
 
