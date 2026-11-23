@@ -306,23 +306,35 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
    `ODOO_ENTERPRISE_REF` to `d1a413a9f50bf97212e8d7969ba59616f098b9e5` and save, without
    redeploying.
 
-**The window** (about 5–7 minutes without service; plan 30 minutes in all):
+**The window** (on 2026-11-24 the site was down only while Coolify swapped the
+containers and for 5 s at the restart; the build and `-u all` ran with the site up;
+plan 45 minutes in all):
 
-4. Merge the upgrade branch into `main`. Coolify builds the image first (about 5 minutes
-   on the Mac; the old containers keep serving meanwhile; a failed build changes
-   nothing), then replaces the containers. Then check the pair before anything else:
+4. Merge the upgrade branch into `main`. Coolify builds the image first (6.5 minutes on
+   the server on 2026-11-24; the old containers keep serving meanwhile; a failed build
+   changes nothing), then replaces the containers. While it built, the server did not
+   answer over Tailscale/SSH for 13 minutes; the site kept serving, and SSH came back
+   on its own. Then check the pair before anything else:
 
    ```bash
    ODOO=$(docker ps --format '{{.Names}}' | grep '^odoo-w75tkzcbr7om152wupubem1r' | head -1)
    docker exec "$ODOO" dpkg-query -W odoo                          # odoo 19.0.20261123
-   docker exec "$ODOO" cat /mnt/extra-addons/enterprise/.git/HEAD  # d1a413a9f50bf97212e8d7969ba59616f098b9e5
+   docker exec "$ODOO" sh -c 'h=$(cat /mnt/extra-addons/enterprise/.git/HEAD); case "$h" in "ref: "*) cat "/mnt/extra-addons/enterprise/.git/${h#ref: }";; *) echo "$h";; esac'   # d1a413a9f50bf97212e8d7969ba59616f098b9e5
    docker logs "$(docker ps -a --format '{{.Names}}' | grep '^enterprise-fetcher-w75tkzcbr7om152wupubem1r' | head -1)" 2>&1 | tail -3
    ```
 
-   Any other version or HEAD, or a `WARNING` in the fetcher log: stop and roll back.
+   `.git/HEAD` of the enterprise volume holds `ref: refs/heads/19.0`, not a hash: the
+   fetcher resets that branch, so the commit is in the branch file, which the second
+   command reads. The fetcher log ends with `HEAD is now at d1a413a9f` and
+   `Enterprise addons ready.` Any other version or commit, or a `WARNING` in the
+   fetcher log: stop and roll back.
 5. `-u all`. The schema change is indexes only, so the running server copes with the
-   old data until it is done (rehearsed: registry loads without `-u`). About 3 minutes
-   (170 s on the copy):
+   old data until it is done (rehearsed: registry loads without `-u`). On 2026-11-24 it
+   took 657 s in production against 170 s on the copy: rewriting the Spreadsheet
+   dashboards as attachments on S3 is slow (338 s for `spreadsheet_dashboard_mrp_account`
+   alone, with the log silent meanwhile). The site stays up, and Odoo skips the crons
+   while modules are being updated ("Skipping database odoo because of modules to
+   install/upgrade/remove"):
 
    ```bash
    docker top "$ODOO" -o pid,etime,args | grep -E 'shell|stop-after-init'   # must print nothing
