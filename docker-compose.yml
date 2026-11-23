@@ -29,10 +29,12 @@ services:
       ODOO_ENTERPRISE_GITHUB_TOKEN: ${ODOO_ENTERPRISE_GITHUB_TOKEN:-}
       ODOO_VERSION: ${ODOO_VERSION:-19.0}
       # Pin enterprise to the commit matching the Odoo core build in the Dockerfile
-      # (core 19.0-20260528 <-> enterprise 88d2e934e of 2026-06-06). Bump BOTH
-      # together on a planned upgrade; a floating branch head breaks the registry
-      # on every deploy/restart (outage of 2026-09-15).
-      ODOO_ENTERPRISE_REF: ${ODOO_ENTERPRISE_REF:-88d2e934eaf7eb37f72732bc1b9c1593a3ba1577}
+      # (core nightly 19.0.20261123 <-> enterprise d1a413a9f of 2026-11-21, the
+      # head of 19.0 when that core was built). Bump BOTH together on a planned
+      # upgrade; a floating branch head breaks the registry on every
+      # deploy/restart (outage of 2026-09-15). A value set in Coolify's
+      # environment wins over this default: change it there too.
+      ODOO_ENTERPRISE_REF: ${ODOO_ENTERPRISE_REF:-d1a413a9f50bf97212e8d7969ba59616f098b9e5}
     entrypoint:
       - /bin/sh
       - -c
