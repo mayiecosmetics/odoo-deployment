@@ -255,21 +255,41 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
 
 **Before the window** (no downtime):
 
-0. Paper format of MAYIE COSMETICS S.R.L. (company 2): on 2026-11-23 its default was
-   the Studio label format `Etichetă 100×100` (created on 2026-09-24 for the shelf
-   labels). Today a report printed while that company is the active one already comes
-   out on 100×100 mm pages; with the new core every invoice of that company does,
-   whatever the active company (rehearsed: 7 label pages for a 5-line invoice instead
-   of 2 pages of A4). Set it to A4 (Settings → Companies → Configure Document Layout,
-   with that company active). The shelf-label report has its own paper format and is
-   not affected.
-1. Backup, and the list of disabled crons to compare with afterwards:
+0. Printing must stay exactly as it is (Tudor, 2026-11-23). Two things would change it,
+   both rehearsed on 21 real documents and fixed without touching the companies, the
+   AWB labels or the shelf labels:
+   - Invoices are now rendered in the invoice's company, and MAYIE COSMETICS S.R.L.
+     (company 2) has the Studio label format `Etichetă 100×100` as its default paper
+     format: its invoices would print on 100×100 mm pages (7 pages instead of 2 of A4).
+     The two invoice reports get the A4 format they print with today
+     (`base.paperformat_euro`) as their own format (step 1).
+   - `-u all` rewrites the report templates from the module files: Odoo's newer
+     versions of the address block, the folder layout, the invoice, the sale order and
+     the invoice lots table, and it would undo the edits made in the database on
+     2026-10-04 to `stock.report_picking` (compact table) and
+     `account.report_invoice_document`. These six views get back the
+     production version after `-u all` and are marked `noupdate`, so a later `-u`
+     leaves them alone too (steps 1 and 5). To take Odoo's versions later: set
+     `noupdate = false` on their `ir_model_data` rows and update the module.
+1. Backup, the list of disabled crons to compare with afterwards, a copy of the six
+   report views as they print today, and the A4 format on the invoice reports:
 
    ```bash
    docker exec "$DB" pg_dump -U odoo -d odoo -Fc > /root/odoo_pre_upgrade_$TS.dump
    chmod 600 /root/odoo_pre_upgrade_$TS.dump
    docker exec -i "$DB" pg_restore -l < /root/odoo_pre_upgrade_$TS.dump | wc -l   # tens of thousands, not 0
    docker exec "$DB" psql -U odoo -d odoo -At -c "select id from ir_cron where not active order by id" > /root/odoo_pre_upgrade_inactive_crons_$TS.txt
+   docker exec -i "$DB" psql -U odoo -d odoo -At <<'SQL'
+   create table mayie_upgrade_print_views as
+     select v.id, d.module || '.' || d.name as xmlid, v.arch_db
+       from ir_ui_view v join ir_model_data d on d.model = 'ir.ui.view' and d.res_id = v.id
+      where d.module || '.' || d.name in ('web.address_layout', 'web.external_layout_folder',
+            'account.report_invoice_document', 'sale.report_saleorder_document',
+            'stock.report_picking', 'stock_account.stock_account_report_invoice_document');
+   select count(*) from mayie_upgrade_print_views;                                   -- 6
+   update ir_act_report_xml set paperformat_id = (select res_id from ir_model_data where module = 'base' and name = 'paperformat_euro')
+    where report_name in ('account.report_invoice_with_payments', 'account.report_invoice');  -- UPDATE 2
+   SQL
    ```
 2. Fetch the new enterprise commit into the volume (this also proves the GitHub token
    works) and tag the current one, so that the deploy and a rollback both take the
@@ -308,6 +328,14 @@ TS=$(date -u +%Y%m%dT%H%M%SZ)
    docker top "$ODOO" -o pid,etime,args | grep -E 'shell|stop-after-init'   # must print nothing
    time docker exec "$ODOO" odoo -c /tmp/odoo.conf -d odoo -u all --stop-after-init --no-http --max-cron-threads=0 --log-level=info > /root/odoo_u_all_$TS.log 2>&1; echo "exit=$?"
    grep -E ' (ERROR|CRITICAL) ' /root/odoo_u_all_$TS.log   # only "Some modules are not loaded ... ['studio_customization']"
+   docker exec -i "$DB" psql -U odoo -d odoo -At <<'SQL'
+   update ir_ui_view v set arch_db = s.arch_db from mayie_upgrade_print_views s where v.id = s.id;   -- UPDATE 6
+   update ir_model_data d set noupdate = true from mayie_upgrade_print_views s
+    where d.model = 'ir.ui.view' and d.res_id = s.id;                                                -- UPDATE 6
+   drop table mayie_upgrade_print_views;
+   select count(*) from ir_act_report_xml where paperformat_id is not null
+      and report_name in ('account.report_invoice_with_payments', 'account.report_invoice');       -- 2
+   SQL
    docker restart -t 30 "$ODOO"
    ```
 6. Checks: `https://erp.mayie.ro/web/login` answers 200; the Odoo log since the restart
