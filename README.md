@@ -84,7 +84,27 @@ All configuration is controlled via `.env`. One credential set for both PostgreS
 | `ODOO_PORT` | Host port for Odoo web | `8069` |
 | `ODOO_LONGPOLLING_PORT` | Host port for longpolling | `8072` |
 | `ODOO_ADMIN_PASSWORD` | Odoo master/admin password | — |
+| `ODOO_LIST_DB` | Database manager and database listing (`/web/database/*`, RPC service `db`) | `True` |
 | `BACKUP_RETENTION_DAYS` | Auto-delete backups older than N days | `30` |
+
+### `ODOO_LIST_DB` must be `False` in production
+
+The default `True` is for local development, where the database manager creates
+the first database. In production it is set to **`False` in Coolify's environment
+variables** (since 2026-11-23). With `True`, `https://erp.mayie.ro/web/database/manager`
+offered backup, restore, duplicate, delete and "set master password" to anyone on
+the internet, guarded only by the master password, and `/web/database/list` returned
+the database name without any login.
+
+`False` is safe here because the Postgres server holds a single Odoo database
+(`odoo`; the `postgres` maintenance database is ignored), so Odoo selects it on its
+own and nobody needs the selector. Check after any change to the environment:
+
+```bash
+curl -s -X POST https://erp.mayie.ro/web/database/list \
+     -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"call","params":{}}'
+# expected: an "Access Denied" error, not ["odoo"]
+```
 
 ## Core/enterprise pin
 
